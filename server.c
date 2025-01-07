@@ -1,19 +1,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <sys/types.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
+#include <string.h>
 
-#include <unistd.h>
+#include "networking.h"
 
 int main() {
     //premmenne
     int port, serverSocket, clientSocket, status;
+    char buffer[1024] = {0};
+    char* msg = "pong";
+    ssize_t value;
     struct sockaddr_in serv_addr;
     struct sockaddr_storage client_addr;
     socklen_t addr_size;
+
     printf("Zadajte port: ");
     scanf("%d", &port);
     printf("%d\n");
@@ -28,6 +29,11 @@ int main() {
 
     addr_size = sizeof(client_addr);
     clientSocket = accept(serverSocket, (struct sockaddr *)&client_addr, &addr_size);
+
+    value = read(clientSocket, buffer, 1023);
+
+    printf("%s\n", buffer);
+    send(clientSocket, msg, strlen(msg), 0);
 
     close(clientSocket);
     close(serverSocket);
