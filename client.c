@@ -1,10 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <termios.h>
-
+#include <pthread.h>
 #include <string.h>
-
-#include "networking.h"
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
 
 static struct termios normal_termios;
 static int cmd = STDIN_FILENO;
@@ -46,69 +49,85 @@ int readKeyPress() {
     return x;
 }
 
-typedef struct data_{
-    int port;
-    char ip_addr[19];
-} data_;
+typedef struct box{
+    int socket, signal;
+} box;
 
-void * network() {
-    //premmenne
-    int port, status, clientSocket, value;
-    char ip_addr[19], buffer[1024] = {0};
-    char* msg = "ping";
-    struct sockaddr_in serv_addr;
+void * user(void * data) {
+    box * d = (box*)data;
+    int x;
+    char buffer[1024];
 
-    //sockety
-    clientSocket = socket(AF_INET, SOCK_STREAM, 0);
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(port);
-    if (inet_pton(AF_INET, ip_addr, &serv_addr.sin_addr) <= 0) {
-        printf("\nInvalid address/ Address not supported \n");
-        return -1;
+    while(d->signal == 0) {
+        enableRawMode();
+        x = readKeyPress();
+        sprintf(buffer, "%d", x);
+        disableRawMode();
+
+        send(d->socket, buffer, strlen(buffer), 0);
+
+        if(x == -1)
+            d->signal = 1;
     }
-    status = connect(clientSocket, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-
-    send(clientSocket, msg, strlen(msg), 0);
-    value = read(clientSocket, buffer, 1023);
-    printf("%s\n", buffer);
-
-    close(clientSocket);
 }
 
-void * ui() {
-    //premmenne
-    int choice, port;
-    char ip_addr[19];
+void * server(void * data) {
+    box * d = (box*)data;
+    char buffer[1024];
+    ssize_t recv_size;
 
-    //ui
-    enableRawMode();
-    printf("%d\n", readKeyPress());
-    disableRawMode();
-
-    printf("1. Pripojit\n2. Odist\n");
-    scanf("%d", &choice);
-    switch(choice) {
-        case 1:
-            printf("Zadaj adresu ip: ");
-            scanf("%s", ip_addr);
-            printf("Zadaj port: ");
-            scanf("%d", &port);
-
-            break;
-        case 2:
-            printf("Exiting.\n");
-            break;
-        default:
-            break;
+    int tiles[20][20];
+    
+    while(d->signal == 0) {
+        printf("\033[H");
+        recv_size = recv(d->socket, tiles, 1600ul, 0);
+        if(recv_size > 0) {
+            buffer[recv_size] = 0;
+            //printf("%s\n", buffer);
+            for (size_t i = 0; i < 20; i++)
+            {
+                for (size_t j = 0; j < 20; j++)
+                {
+                    if(tiles[i][j] == 1)
+                        printf("\x1b[32m■ \x1b[0m");
+                    else if(tiles[i][j] == 2)
+                        printf("\x1b[31m■ \x1b[0m");
+                    else
+                        printf("■ ");
+                }
+                printf("\n");
+            }
+            
+        }
     }
-
 }
-
 
 int main() {
-    //terminal
+    printf("\033[H\033[J");
     tcgetattr(cmd, &normal_termios);
     atexit(disableRawMode);
+
+    box data;
+    data.signal = 0;
+
+    int clientSocket = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in address;
+    address.sin_family = AF_INET;
+    address.sin_port = htons(10101);
+    inet_pton(AF_INET, "0.0.0.0", &address.sin_addr);
+
+    data.socket = clientSocket;
+
+    int result = connect(clientSocket, (struct sockaddr *)&address, sizeof(address));
+
+    pthread_t user_t, server_t;
+
+    pthread_create(&user_t, NULL, user, &data);
+    pthread_create(&server_t, NULL, server, &data);
+
+    pthread_join(user_t, NULL);
+    pthread_join(server_t, NULL);
     
+    close(clientSocket);
     return 0;
 }
