@@ -1,11 +1,11 @@
-all: client server
+server:
+	gcc server.c microsleep.c -pthread -o Server
 
-client: client.c
-		gcc client.c -o Client
+client:
+	gcc client.c -pthread -o Client
 
-server: server.c
-		gcc server.c -o Server
+all : client server
 
 clean:
-		rm Client
-		rm Server
+	rm Client
+	rm Server
