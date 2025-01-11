@@ -64,26 +64,25 @@ void * user(void * data) {
         sprintf(buffer, "%d", x);
         disableRawMode();
 
-        send(d->socket, buffer, strlen(buffer), 0);
-
         if(x == -1)
             d->signal = 1;
+
+        send(d->socket, buffer, strlen(buffer), 0);
     }
 }
 
 void * server(void * data) {
     box * d = (box*)data;
     char buffer[1024];
-    ssize_t recv_size;
+    ssize_t recv_size, recv_size_;
 
-    int tiles[20][20];
+    int tiles[20][20], score;
     
     while(d->signal == 0) {
         printf("\033[H");
         recv_size = recv(d->socket, tiles, 1600ul, 0);
+        recv_size_ = recv(d->socket, &score, sizeof(int), 0);
         if(recv_size > 0) {
-            buffer[recv_size] = 0;
-            //printf("%s\n", buffer);
             for (size_t i = 0; i < 20; i++)
             {
                 for (size_t j = 0; j < 20; j++)
@@ -97,8 +96,9 @@ void * server(void * data) {
                 }
                 printf("\n");
             }
-            
         }
+        if(recv_size_ > 0)
+            printf("\n[SCORE:%d]", score);
     }
 }
 
@@ -107,13 +107,17 @@ int main() {
     tcgetattr(cmd, &normal_termios);
     atexit(disableRawMode);
 
+    int port = 0;
     box data;
     data.signal = 0;
+
+    printf("Zadajte port: ");
+    scanf("%d", &port);
 
     int clientSocket = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in address;
     address.sin_family = AF_INET;
-    address.sin_port = htons(10101);
+    address.sin_port = htons(port);
     inet_pton(AF_INET, "0.0.0.0", &address.sin_addr);
 
     data.socket = clientSocket;
@@ -129,5 +133,6 @@ int main() {
     pthread_join(server_t, NULL);
     
     close(clientSocket);
+    printf("\033[H\033[J");
     return 0;
 }

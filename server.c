@@ -30,8 +30,21 @@ coord getRandomCoord() {
 }
 
 typedef struct box{
-    int key, socket, signal;
+    int key, socket, signal, died, score, snake_len;
 } box;
+
+int coordNotInArray(coord c, coord* cArray, int cArrayLen) {
+    int x = 0;
+    for(int i = 0; i <= cArrayLen; i++) {
+        if(c.x != cArray[i].x && c.y != cArray[i].y)
+            x++;
+    }
+    printf(" [x:%d snake_len:%d] ", x, cArrayLen);
+    if(x >= cArrayLen)
+        return 1;
+    else
+        return 0;
+}
 
 /*
     W - 1
@@ -45,8 +58,9 @@ void * out_f(void * data) {
     box * d = (box*)data;
     coord food, lastCoord;
     coord snake[SIDE_LENGTH*SIDE_LENGTH];
-    int snake_len = 0, foodCheck;
+    int foodCheck;
     int tiles[SIDE_LENGTH][SIDE_LENGTH];
+    d->snake_len = 0;
 
     //init hry
     snake[0].x = SIDE_LENGTH/2;
@@ -54,35 +68,30 @@ void * out_f(void * data) {
     food = getRandomCoord();
 
     while(d->signal == 0) {
-        if(snake_len > 0)
-            for (int i = 1; i < snake_len; i++)
+        if(d->died == 0) {
+            lastCoord = snake[d->snake_len];
+            for (int i = d->snake_len+1; i >= 1; i--)
             {
-                if (snake[0].x == snake[i].x && snake[0].y == snake[i].y)
-                    printf("game over");
+                snake[i] = snake[i-1];
             }
-        
-        lastCoord = snake[snake_len];
-        for (int i = snake_len+1; i >= 1; i--)
-        {
-            snake[i] = snake[i-1];
-        }
 
-        switch (d->key)
-        {
-        case 1:
-            snake[0].x--;
-            break;
-        case 2:
-            snake[0].x++;
-            break;
-        case 3:
-            snake[0].y--;
-            break;
-        case 4:
-            snake[0].y++;
-            break;
-        default:
-            break;
+            switch (d->key)
+            {
+            case 1:
+                snake[0].x--;
+                break;
+            case 2:
+                snake[0].x++;
+                break;
+            case 3:
+                snake[0].y--;
+                break;
+            case 4:
+                snake[0].y++;
+                break;
+            default:
+                break;
+            }
         }
 
         for(int i = 0; i < SIDE_LENGTH; i++) {
@@ -99,34 +108,49 @@ void * out_f(void * data) {
             snake[0].x = SIDE_LENGTH-1;
         if(snake[0].y < 0)
             snake[0].y = SIDE_LENGTH-1;
-        //tiles[snake->x][snake->y] = 1;
-        for (size_t i = 0; i <= snake_len; i++)
+        for (size_t i = 0; i <= d->snake_len; i++)
         {
             tiles[snake[i].x][snake[i].y] = 1;
         }
         
 
         if(snake[0].x == food.x && snake[0].y == food.y) {
-            snake_len++;
-            snake[snake_len] = lastCoord;
+            d->score++;
+            d->snake_len++;
+            snake[d->snake_len] = lastCoord;
             do {
                 food = getRandomCoord();
-            } while (food.x == snake[0].x && food.y == snake[0].y);
+                printf("[generated food x:%d y:%d]", food.x, food.y);
+            } while (coordNotInArray(food, snake, d->snake_len) != 1);
         }
 
-        printf("snake{x:%d y:%d len:%d} food{x:%d y:%d}\n", snake[0].x, snake[0].y, snake_len, food.x, food.y);
+        if(d->snake_len > 0)
+            for (int i = 1; i < d->snake_len; i++)
+            {
+                if (snake[0].x == snake[i].x && snake[0].y == snake[i].y){
+                    printf("[game over] ");
+                    d->died = 1;
+                }                        
+            }
+
+        printf("snake{x:%d y:%d len:%d} food{x:%d y:%d}\n", snake[0].x, snake[0].y, d->snake_len, food.x, food.y);
 
         send(d->socket, tiles, sizeof(tiles), 0);
+        send(d->socket, &d->score, sizeof(int), 0);
         microsleep(400000);
-    }
+    } 
 }
 
 void * in_f(void * data) {
     box * d = (box*)data;
     char buffer[1024];
+    int new_key = d->key;
     while(d->signal == 0) {
         ssize_t recv_size = recv(d->socket, buffer, 1024, 0);
-        d->key = atoi(buffer);
+        new_key = atoi(buffer);
+        if(d->snake_len == 0 || (new_key == 1 && d->key != 2) || (new_key == 2 && d->key != 1) || (new_key == 3 && d->key != 4) || (new_key == 4 && d->key != 3)){
+            d->key = new_key;
+        }
         if(d->key == -1)
             d->signal = 1;
         if(recv_size > 0) {
@@ -138,7 +162,7 @@ void * in_f(void * data) {
 
 int main() {
     //premmenne
-    int serverSocket, clientSocket, status;
+    int serverSocket, clientSocket, status, port = 0;
     
     ssize_t value;
     struct sockaddr_in serv_addr;
@@ -150,11 +174,16 @@ int main() {
     box data;
     data.key = 1;
     data.signal = 0;
+    data.died = 0;
+    data.score = 0;
+
+    printf("Zadajte port: ");
+    scanf("%d", &port);
 
     serverSocket = socket(AF_INET, SOCK_STREAM, 0);
     serv_addr.sin_family = AF_INET;
     inet_pton(AF_INET, "0.0.0.0", &serv_addr.sin_addr);
-    serv_addr.sin_port = htons(10101);
+    serv_addr.sin_port = htons(port);
     
     status = bind(serverSocket, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
     listen(serverSocket, 1);
