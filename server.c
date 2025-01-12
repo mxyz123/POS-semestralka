@@ -76,7 +76,7 @@ void * server(void * data_) {
             if(data->died == 0) {
                 data->time++;
                 if(data->snake_len > 0) {
-                    for(int i = 1; i < data->snake_len; i++) {
+                    for(int i = 1; i < data->snake_len+1; i++) {
                         if(data->snake[0].x == data->snake[i].x && data->snake[0].y == data->snake[i].y)
                         {
                             data->died = 1;
